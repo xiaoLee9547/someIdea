@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElButton, ElDialog, ElInput } from 'element-plus'
+import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
 
 defineOptions({
@@ -12,19 +12,40 @@ const openAddDialog = () => {
     addDialog.value = true
 }
 
-const addElement = reactive<Element>({
+const addElement = reactive({
     name: '',
-    width: null,
-    height: null,
+    width: '',
+    height: '',
 })
+const container = ref()
+
+const createElement = (element: Element, position: [number, number]) => {
+    const ele = document.createElement('div')
+    ele.className = `row-start-${position[0]} row-end-${element.height} col-start-${position[0]} col-end-${element.width} bg-black`
+    console.log(ele)
+    container.value.appendChild(ele)
+}
 
 const confirmAdd = () => {
     // 创建元素
+    currentElement.value = {
+        name: addElement.name,
+        width: Number(addElement.width),
+        height: Number(addElement.height),
+    }
+    const position = findSafeArea(currentElement.value)
+    if (!position) {
+        ElMessage.error('当前页面无法创建该元素')
+        return
+    }
+    createElement(currentElement.value, position as [number, number])
+    addDialog.value = false
 }
 
 const cancelAdd = () => {
-    addElement.width = null
-    addElement.height = null
+    addElement.width = ''
+    addElement.height = '0'
+    addDialog.value = false
 }
 
 const elementHashMap: (number[])[] = Array.from({ length: 10 }).fill(0).map((): number[] => {
@@ -37,7 +58,7 @@ interface Element {
     height: number
 }
 
-const currentElement = reactive<Element>({
+const currentElement = ref<Element>({
     name: '',
     width: 0,
     height: 0,
@@ -62,14 +83,48 @@ const isSafe = (row: number, col: number, element: Element): boolean => {
     return true
 }
 
-const findSafeArea = (element: Element) => {
-    // 滑动窗口判断最长空间是否满足当前元素
-    const l = 0
-    const r = elementHashMap[0].length
-    for (let row = 0; row < elementHashMap.length; row++) {
-        for (let col = l; col <= r; col++) {
+const getCurrentGridInfo = () => {
+    // 滑动窗口及hash存储判断最长空间
+    const hash = Array.from({ length: 10 }).fill(0).map((): number[] => {
+        return Array.from({ length: 10 }).fill(0) as number[]
+    })
+    for (let row = 0; row < hash.length; row++) {
+        let count = 0
+        for (let col = 0; col < hash[0].length; col++) {
+            if (elementHashMap[row][col] === 0) {
+                let num = ++count
+                while (num > 0) {
+                    hash[row][col - num + 1]++
+                    num--
+                }
+            } else {
+                count = 0
+            }
         }
     }
+    return hash
+}
+
+const findSafeArea = (element: Element) => {
+    const info = getCurrentGridInfo()
+    for (let row = 0; row < info.length; row++) {
+        for (let col = 0; col < info.length; col++) {
+            if (info[row][col] >= element.width) {
+                let rowCount = element.height
+                let beginRow = row
+                while (rowCount) {
+                    if (info[beginRow][col] >= element.width) {
+                        beginRow++
+                        rowCount--
+                    } else {
+                        break
+                    }
+                }
+                return [row, col]
+            }
+        }
+    }
+    return false
 }
 
 const putElement = () => {
@@ -83,8 +138,8 @@ const putElement = () => {
             添加元素
         </ElButton>
     </div>
-    <div class="vh-100 w-full bg-amber-50 grid grid-cols-10 grid-rows-10">
-        1
+    <div ref="container" class="vh-100 w-full bg-amber-50 grid grid-cols-10 grid-rows-10">
+        <div class="row-start-0 row-end-3 col-start-0 col-end-4 bg-black" />
     </div>
     <ElDialog
         v-model="addDialog"
