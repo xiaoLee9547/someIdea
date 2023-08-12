@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useWindowSize } from '@vueuse/core'
+import { useElementBounding, useWindowSize } from '@vueuse/core'
 import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
 
@@ -39,7 +39,11 @@ const confirmAdd = () => {
         ElMessage.error('不能创建同名元素')
         return
     }
-    const position = findSafeArea(currentElement.value)
+    const position = findSafeArea({
+        name: addElement.name,
+        width: Number(addElement.width),
+        height: Number(addElement.height),
+    })
     if (!position) {
         ElMessage.error('当前页面无法创建该元素')
         return
@@ -92,7 +96,7 @@ const isSafe = (rowIndex: number, colIndex: number, element: Element): boolean =
     // 判断是否有元素
     let curRow = rowIndex
     let curCol = colIndex
-    while (curRow <= rowIndex + element.height && curCol <= colIndex + element.width) {
+    while (curRow < rowIndex + element.height && curCol < colIndex + element.width) {
         if (elementHashMap[curRow][curCol] !== 0) return false
         if (curCol === colIndexCount) {
             curCol = colIndex
@@ -126,22 +130,24 @@ const getCurrentGridInfo = () => {
     return hash
 }
 
-const findSafeArea = (element: Element) => {
+const findSafeArea = (element: Omit<Element, 'rowNumber' | 'colNumber'>) => {
     const info = getCurrentGridInfo()
     for (let row = 0; row < info.length; row++) {
         for (let col = 0; col < info.length; col++) {
             if (info[row][col] >= element.width) {
-                let rowCount = element.height
-                let beginRow = row
+                let rowCount = element.height - 1
+                let beginRow = row + 1
+                let flag = true
                 while (rowCount) {
                     if (info[beginRow][col] >= element.width) {
                         beginRow++
                         rowCount--
                     } else {
+                        flag = false
                         break
                     }
                 }
-                return [row, col]
+                if (flag) return [row, col]
             }
         }
     }
@@ -149,19 +155,27 @@ const findSafeArea = (element: Element) => {
 }
 
 const { width: windowWidth, height: windowHeight } = useWindowSize()
-const endDrag = (e: DragEvent, element: Element) => {
+
+const beginDragData = reactive({
+    offsetX: 0,
+    offsetY: 0,
+})
+
+const startDrag = (e: DragEvent, element: Element) => {
+    handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'move')
     currentElement.value = element
-    const movedCol = Math.floor(e.offsetX / (windowWidth.value / 10))
-    const movedRow = Math.floor(e.offsetY / (windowHeight.value / 10))
+    const { x, y } = useElementBounding(ref(document.getElementById(element.name)))
+    beginDragData.offsetX = e.offsetX - x.value
+    beginDragData.offsetY = e.offsetX - y.value
+}
+const endDrag = (e: DragEvent, element: Element) => {
+    const movedCol = Math.floor((e.offsetX - beginDragData.offsetX) / (windowWidth.value / 10))
+    const movedRow = Math.floor((e.offsetY - beginDragData.offsetY) / (windowHeight.value / 10))
     if (isSafe(movedRow, movedCol, element)) {
-        handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'move')
         currentElement.value.rowNumber = movedRow + 1
         currentElement.value.colNumber = movedCol + 1
-        handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'stay')
     }
-}
-const test = (e) => {
-    console.log(e)
+    handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'stay')
 }
 </script>
 
@@ -174,17 +188,20 @@ const test = (e) => {
     <div ref="container" class="vh-100 bg-amber-50 grid grid-cols-10 grid-rows-10 gap-4px !relative">
         <template v-for="item in allElements" :key="item.name">
             <div
+                :id="item.name"
                 draggable="true"
-                class="bg-black grid"
+                class="bg-sky-200 flex justify-center items-center text-6xl"
                 :style="{
                     gridRowStart: item.rowNumber,
                     gridRowEnd: item.height + item.rowNumber,
                     gridColumnStart: item.colNumber,
                     gridColumnEnd: item.width + item.colNumber,
                 }"
-                @drag="test"
+                @dragstart="startDrag($event, item)"
                 @dragend="endDrag($event, item)"
-            />
+            >
+                {{ item.name }}
+            </div>
         </template>
     </div>
     <ElDialog
