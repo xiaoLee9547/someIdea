@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useWindowSize } from '@vueuse/core'
 import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
 
@@ -17,28 +18,42 @@ const addElement = reactive({
     width: '',
     height: '',
 })
+
+const allElements = reactive<Element[]>([])
+
 const container = ref()
 
-const createElement = (element: Element, position: [number, number]) => {
-    const ele = document.createElement('div')
-    ele.className = `row-start-${position[0]} row-end-${element.height} col-start-${position[0]} col-end-${element.width} bg-black`
-    console.log(ele)
-    container.value.appendChild(ele)
+const handleHashMap = (rowIndex: number, colIndex: number, element: Element, type: 'move' | 'stay') => {
+    for (let row = rowIndex; row < element.height + rowIndex; row++) {
+        for (let col = colIndex; col < element.height + colIndex; col++) {
+            elementHashMap[row][col] = type === 'move' ? 0 : 1
+        }
+    }
 }
 
 const confirmAdd = () => {
-    // 创建元素
-    currentElement.value = {
-        name: addElement.name,
-        width: Number(addElement.width),
-        height: Number(addElement.height),
+    const repeatElement = allElements.find((item) => {
+        return item.name === addElement.name
+    })
+    if (repeatElement) {
+        ElMessage.error('不能创建同名元素')
+        return
     }
     const position = findSafeArea(currentElement.value)
     if (!position) {
         ElMessage.error('当前页面无法创建该元素')
         return
     }
-    createElement(currentElement.value, position as [number, number])
+    // 创建元素
+    currentElement.value = {
+        name: addElement.name,
+        width: Number(addElement.width),
+        height: Number(addElement.height),
+        rowNumber: position[0] + 1,
+        colNumber: position[1] + 1,
+    }
+    allElements.push(currentElement.value)
+    handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'stay')
     addDialog.value = false
 }
 
@@ -56,25 +71,31 @@ interface Element {
     name: string
     width: number
     height: number
+    rowNumber: number
+    colNumber: number
 }
 
 const currentElement = ref<Element>({
     name: '',
     width: 0,
     height: 0,
+    rowNumber: 0,
+    colNumber: 0,
 })
 
-const isSafe = (row: number, col: number, element: Element): boolean => {
+const isSafe = (rowIndex: number, colIndex: number, element: Element): boolean => {
     const rowIndexCount = elementHashMap.length - 1
     const colIndexCount = elementHashMap[0].length - 1
-    let curRow = row
-    let curCol = col
-    if (rowIndexCount - row < element.width) return false
-    if (colIndexCount - col < element.height) return false
-    while (curRow <= row + element.height || curCol <= col + element.width) {
+    // 判断是否越界
+    if (rowIndexCount - rowIndex + 1 < element.width) return false
+    if (colIndexCount - colIndex + 1 < element.height) return false
+    // 判断是否有元素
+    let curRow = rowIndex
+    let curCol = colIndex
+    while (curRow <= rowIndex + element.height && curCol <= colIndex + element.width) {
         if (elementHashMap[curRow][curCol] !== 0) return false
         if (curCol === colIndexCount) {
-            curCol = col
+            curCol = colIndex
             curRow++
         } else {
             curCol++
@@ -127,19 +148,44 @@ const findSafeArea = (element: Element) => {
     return false
 }
 
-const putElement = () => {
-
+const { width: windowWidth, height: windowHeight } = useWindowSize()
+const endDrag = (e: DragEvent, element: Element) => {
+    currentElement.value = element
+    const movedCol = Math.floor(e.offsetX / (windowWidth.value / 10))
+    const movedRow = Math.floor(e.offsetY / (windowHeight.value / 10))
+    if (isSafe(movedRow, movedCol, element)) {
+        handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'move')
+        currentElement.value.rowNumber = movedRow + 1
+        currentElement.value.colNumber = movedCol + 1
+        handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'stay')
+    }
+}
+const test = (e) => {
+    console.log(e)
 }
 </script>
 
 <template>
-    <div class="h-30px w-full">
+    <div class="h-30px w-full absolute top-0 left-0 z-10">
         <ElButton @click="openAddDialog">
             添加元素
         </ElButton>
     </div>
-    <div ref="container" class="vh-100 w-full bg-amber-50 grid grid-cols-10 grid-rows-10">
-        <div class="row-start-0 row-end-3 col-start-0 col-end-4 bg-black" />
+    <div ref="container" class="vh-100 bg-amber-50 grid grid-cols-10 grid-rows-10 gap-4px !relative">
+        <template v-for="item in allElements" :key="item.name">
+            <div
+                draggable="true"
+                class="bg-black grid"
+                :style="{
+                    gridRowStart: item.rowNumber,
+                    gridRowEnd: item.height + item.rowNumber,
+                    gridColumnStart: item.colNumber,
+                    gridColumnEnd: item.width + item.colNumber,
+                }"
+                @drag="test"
+                @dragend="endDrag($event, item)"
+            />
+        </template>
     </div>
     <ElDialog
         v-model="addDialog"
