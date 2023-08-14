@@ -2,6 +2,8 @@
 import { useElementBounding, useMouse, useWindowSize } from '@vueuse/core'
 import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
 import { reactive, ref, toRaw } from 'vue'
+import { setNode } from '@/views/ElementSort/utils'
+import type { ElementNode } from '@/views/ElementSort/type'
 
 defineOptions({
     name: 'ElementSort',
@@ -19,13 +21,13 @@ const addElement = reactive({
     height: '',
 })
 
-const allElements = reactive<Element[]>([])
+const allElements = reactive<ElementNode[]>([])
 
 const container = ref()
 
-const handleHashMap = (rowIndex: number, colIndex: number, element: Element, type: 'move' | 'stay') => {
+const handleHashMap = (rowIndex: number, colIndex: number, element: ElementNode, type: 'move' | 'stay') => {
     for (let row = rowIndex; row < element.height + rowIndex; row++) {
-        for (let col = colIndex; col < element.height + colIndex; col++) {
+        for (let col = colIndex; col < element.width + colIndex; col++) {
             elementHashMap[row][col] = type === 'move' ? 0 : 1
         }
     }
@@ -58,7 +60,7 @@ const confirmAdd = () => {
         colNumber: position[1] + 1,
     }
     allElements.push(currentElement.value)
-    handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'stay')
+    handleHashMap(position[0], position[1], currentElement.value, 'stay')
     addDialog.value = false
 }
 
@@ -72,15 +74,7 @@ const elementHashMap: (number[])[] = Array.from({ length: 10 }).fill(0).map((): 
     return Array.from({ length: 10 }).fill(0) as number[]
 })
 
-interface Element {
-    name: string
-    width: number
-    height: number
-    rowNumber: number
-    colNumber: number
-}
-
-const currentElement = ref<Element>({
+const currentElement = ref<ElementNode>({
     name: '',
     width: 0,
     height: 0,
@@ -88,7 +82,7 @@ const currentElement = ref<Element>({
     colNumber: 0,
 })
 
-const isSafe = (rowIndex: number, colIndex: number, element: Element): boolean => {
+const isSafe = (rowIndex: number, colIndex: number, element: ElementNode): boolean => {
     const rowIndexCount = elementHashMap.length - 1
     const colIndexCount = elementHashMap[0].length - 1
     // 判断是否越界
@@ -128,11 +122,12 @@ const getCurrentGridInfo = () => {
             }
         }
     }
+    console.log(hash)
     return hash
 }
 let conditionHashMap: number[][] = getCurrentGridInfo()
 
-const findSafeArea = (element: Omit<Element, 'rowNumber' | 'colNumber'>) => {
+const findSafeArea = (element: Omit<ElementNode, 'rowNumber' | 'colNumber'>) => {
     for (let row = 0; row < conditionHashMap.length; row++) {
         for (let col = 0; col < conditionHashMap.length; col++) {
             if (conditionHashMap[row][col] >= element.width) {
@@ -163,36 +158,42 @@ const { width: windowWidth, height: windowHeight } = useWindowSize()
 
 const isDropDown = ref(false)
 
-const currentElementDom = ref<HTMLElement>(document.getElementById('vElement')!)
-
+// 当前元素点击时相对元素的位置
 const currentElementOffset = reactive({
     x: 0,
     y: 0,
 })
 
-const vElement = ref<Element>({
-    name: 'v-element',
+const vElement = ref<ElementNode>({
+    name: '',
     width: 0,
     height: 0,
     rowNumber: 0,
     colNumber: 0,
 })
 
-const startDragElement = (element: Element) => {
+const dragVElement = reactive<ElementNode>({
+    rowNumber: 0,
+    colNumber: 0,
+    width: 0,
+    height: 0,
+    name: '',
+})
+
+const startDragElement = (element: ElementNode) => {
     vElement.value = structuredClone(toRaw(element))
     isDropDown.value = true
     const elementDom = document.getElementById(element.name)!
-    dragVElement.height = element.height
-    dragVElement.width = element.width
-    dragVElement.rowNumber = element.rowNumber
-    dragVElement.colNumber = element.colNumber
-    dragVElement.name = element.name
+    setNode(dragVElement, element)
     currentElement.value = element
+    // 元素的左上角位置
     const { x: elementX, y: elementY } = useElementBounding(ref(elementDom))
+    // 元素在父容器中的相对位置
     const elementInContainerPosition = {
         x: elementX.value - containerX.value,
         y: elementY.value - containerY.value,
     }
+    // 当前鼠标点击的位置
     const mouseInContainerPosition = {
         x: mouseX.value - containerX.value,
         y: mouseY.value - containerY.value,
@@ -202,39 +203,35 @@ const startDragElement = (element: Element) => {
     handleHashMap(element.rowNumber - 1, element.colNumber - 1, element, 'move')
 }
 
-const dragVElement = reactive<Element>({
-    rowNumber: 0,
-    colNumber: 0,
-    width: 0,
-    height: 0,
-    name: '',
-})
+const calcIndex = (index: number) => {
+    if (index > 9) return 9
+    if (index < 0) return 0
+    return index
+}
+// 计算当前拖拽元素所在的格子
+const calcDragElementPosition = () => {
+    const topValue = mouseY.value - currentElementOffset.y
+    const leftValue = mouseX.value - currentElementOffset.x
 
-const moveElement = () => {
-    if (!isDropDown.value) return
-    const topValue = mouseY.value - containerY.value - currentElementOffset.y
-    const leftValue = mouseX.value - containerX.value - currentElementOffset.x
-    // currentElementDom.value.style.top = `${String(x.value)}px`
-    // currentElementDom.value.style.left = `${String(y.value)}px`
-    // 计算当前元素所在的格子
-    const rowIndex = Math.floor(topValue / (windowHeight.value / 10)) > 9 ? 9 : Math.floor(topValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(topValue / (windowHeight.value / 10))
-    const colIndex = Math.floor(leftValue / (windowWidth.value / 10)) > 9 ? 9 : Math.floor(leftValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(leftValue / (windowHeight.value / 10))
-    if (isSafe(rowIndex, colIndex, currentElement.value)) {
-        dragVElement.rowNumber = rowIndex + 1
-        dragVElement.colNumber = colIndex + 1
+    return {
+        rowIndex: calcIndex(Math.round(topValue / (windowHeight.value / 10))),
+        colIndex: calcIndex(Math.round(leftValue / (windowWidth.value / 10))),
     }
 }
 
-const endDragElement = (element: Element) => {
-    const topValue = mouseY.value - containerY.value - currentElementOffset.y
-    const leftValue = mouseX.value - containerX.value - currentElementOffset.x
-    // 计算当前元素所在的格子
-    const rowIndex = Math.floor(topValue / (windowHeight.value / 10)) > 9 ? 9 : Math.floor(topValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(topValue / (windowHeight.value / 10))
-    const colIndex = Math.floor(leftValue / (windowWidth.value / 10)) > 9 ? 9 : Math.floor(leftValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(leftValue / (windowHeight.value / 10))
-    const isSafeRes = isSafe(rowIndex, colIndex, currentElement.value)
-    element.colNumber = isSafeRes ? colIndex + 1 : currentElement.value.colNumber
-    element.rowNumber = isSafeRes ? rowIndex + 1 : currentElement.value.rowNumber
-    handleHashMap(element.rowNumber, element.colNumber, element, 'stay')
+const moveElement = () => {
+    if (!isDropDown.value) return
+    const position = calcDragElementPosition()
+    if (isSafe(position.rowIndex, position.colIndex, currentElement.value)) {
+        dragVElement.rowNumber = position.rowIndex + 1
+        dragVElement.colNumber = position.colIndex + 1
+    }
+}
+
+const endDragElement = (element: ElementNode) => {
+    element.colNumber = dragVElement.colNumber
+    element.rowNumber = dragVElement.rowNumber
+    handleHashMap(element.rowNumber - 1, element.colNumber - 1, element, 'stay')
     isDropDown.value = false
 }
 </script>
@@ -245,7 +242,9 @@ const endDragElement = (element: Element) => {
             添加元素
         </ElButton>
     </div>
-    <div ref="container" class="vh-100 w-full bg-amber-50 grid grid-cols-10 grid-rows-10 gap-4px !relative" @mousemove="moveElement">
+    <div
+        ref="container" class="vh-100 w-full bg-amber-50 grid grid-cols-10 grid-rows-10 gap-4px !relative" @mousemove.self="moveElement"
+    >
         <template v-for="item in allElements" :key="item.name">
             <div
                 :id="item.name"
@@ -256,7 +255,7 @@ const endDragElement = (element: Element) => {
                     gridColumnStart: item.colNumber,
                     gridColumnEnd: item.width + item.colNumber,
                 }"
-                @mousedown.left="startDragElement(item)"
+                @mousedown.left.self="startDragElement(item)"
             >
                 {{ item.name }}
             </div>
@@ -284,7 +283,8 @@ const endDragElement = (element: Element) => {
                 gridColumnStart: dragVElement.colNumber,
                 gridColumnEnd: dragVElement.width + dragVElement.colNumber,
             }"
-            @mouseup.left="endDragElement(currentElement)"
+
+            @mouseup.left.self="endDragElement(currentElement)"
         >
             {{ dragVElement.name }}
         </div>
