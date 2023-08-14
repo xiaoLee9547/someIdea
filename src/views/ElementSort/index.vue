@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useElementBounding, useWindowSize } from '@vueuse/core'
+import { useElementBounding, useMouse, useWindowSize } from '@vueuse/core'
 import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
-import { reactive, ref } from 'vue'
+import { reactive, ref, toRaw } from 'vue'
 
 defineOptions({
     name: 'ElementSort',
@@ -29,6 +29,7 @@ const handleHashMap = (rowIndex: number, colIndex: number, element: Element, typ
             elementHashMap[row][col] = type === 'move' ? 0 : 1
         }
     }
+    conditionHashMap = getCurrentGridInfo()
 }
 
 const confirmAdd = () => {
@@ -109,10 +110,10 @@ const isSafe = (rowIndex: number, colIndex: number, element: Element): boolean =
 }
 
 const getCurrentGridInfo = () => {
-    // 滑动窗口及hash存储判断最长空间
     const hash = Array.from({ length: 10 }).fill(0).map((): number[] => {
         return Array.from({ length: 10 }).fill(0) as number[]
     })
+    // 滑动窗口及hash存储判断最长空间
     for (let row = 0; row < hash.length; row++) {
         let count = 0
         for (let col = 0; col < hash[0].length; col++) {
@@ -129,17 +130,17 @@ const getCurrentGridInfo = () => {
     }
     return hash
 }
+let conditionHashMap: number[][] = getCurrentGridInfo()
 
 const findSafeArea = (element: Omit<Element, 'rowNumber' | 'colNumber'>) => {
-    const info = getCurrentGridInfo()
-    for (let row = 0; row < info.length; row++) {
-        for (let col = 0; col < info.length; col++) {
-            if (info[row][col] >= element.width) {
+    for (let row = 0; row < conditionHashMap.length; row++) {
+        for (let col = 0; col < conditionHashMap.length; col++) {
+            if (conditionHashMap[row][col] >= element.width) {
                 let rowCount = element.height - 1
                 let beginRow = row + 1
                 let flag = true
                 while (rowCount) {
-                    if (info[beginRow][col] >= element.width) {
+                    if (conditionHashMap[beginRow][col] >= element.width) {
                         beginRow++
                         rowCount--
                     } else {
@@ -154,56 +155,141 @@ const findSafeArea = (element: Omit<Element, 'rowNumber' | 'colNumber'>) => {
     return false
 }
 
+const { x: mouseX, y: mouseY } = useMouse()
+
+const { x: containerX, y: containerY } = useElementBounding(container)
+
 const { width: windowWidth, height: windowHeight } = useWindowSize()
 
-const beginDragData = reactive({
-    offsetX: 0,
-    offsetY: 0,
+const isDropDown = ref(false)
+
+const currentElementDom = ref<HTMLElement>(document.getElementById('vElement')!)
+
+const currentElementOffset = reactive({
+    x: 0,
+    y: 0,
 })
 
-const startDrag = (e: DragEvent, element: Element) => {
-    handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'move')
+const vElement = ref<Element>({
+    name: 'v-element',
+    width: 0,
+    height: 0,
+    rowNumber: 0,
+    colNumber: 0,
+})
+
+const startDragElement = (element: Element) => {
+    vElement.value = structuredClone(toRaw(element))
+    isDropDown.value = true
+    const elementDom = document.getElementById(element.name)!
+    dragVElement.height = element.height
+    dragVElement.width = element.width
+    dragVElement.rowNumber = element.rowNumber
+    dragVElement.colNumber = element.colNumber
+    dragVElement.name = element.name
     currentElement.value = element
-    const { x, y } = useElementBounding(ref(document.getElementById(element.name)))
-    beginDragData.offsetX = e.offsetX - x.value
-    beginDragData.offsetY = e.offsetX - y.value
-}
-const endDrag = (e: DragEvent, element: Element) => {
-    const movedCol = Math.floor((e.offsetX - beginDragData.offsetX) / (windowWidth.value / 10))
-    const movedRow = Math.floor((e.offsetY - beginDragData.offsetY) / (windowHeight.value / 10))
-    if (isSafe(movedRow, movedCol, element)) {
-        currentElement.value.rowNumber = movedRow + 1
-        currentElement.value.colNumber = movedCol + 1
+    const { x: elementX, y: elementY } = useElementBounding(ref(elementDom))
+    const elementInContainerPosition = {
+        x: elementX.value - containerX.value,
+        y: elementY.value - containerY.value,
     }
-    handleHashMap(currentElement.value.rowNumber - 1, currentElement.value.colNumber - 1, currentElement.value, 'stay')
+    const mouseInContainerPosition = {
+        x: mouseX.value - containerX.value,
+        y: mouseY.value - containerY.value,
+    }
+    currentElementOffset.x = mouseInContainerPosition.x - elementInContainerPosition.x
+    currentElementOffset.y = mouseInContainerPosition.y - elementInContainerPosition.y
+    handleHashMap(element.rowNumber - 1, element.colNumber - 1, element, 'move')
+}
+
+const dragVElement = reactive<Element>({
+    rowNumber: 0,
+    colNumber: 0,
+    width: 0,
+    height: 0,
+    name: '',
+})
+
+const moveElement = () => {
+    if (!isDropDown.value) return
+    const topValue = mouseY.value - containerY.value - currentElementOffset.y
+    const leftValue = mouseX.value - containerX.value - currentElementOffset.x
+    // currentElementDom.value.style.top = `${String(x.value)}px`
+    // currentElementDom.value.style.left = `${String(y.value)}px`
+    // 计算当前元素所在的格子
+    const rowIndex = Math.floor(topValue / (windowHeight.value / 10)) > 9 ? 9 : Math.floor(topValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(topValue / (windowHeight.value / 10))
+    const colIndex = Math.floor(leftValue / (windowWidth.value / 10)) > 9 ? 9 : Math.floor(leftValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(leftValue / (windowHeight.value / 10))
+    if (isSafe(rowIndex, colIndex, currentElement.value)) {
+        dragVElement.rowNumber = rowIndex + 1
+        dragVElement.colNumber = colIndex + 1
+    }
+}
+
+const endDragElement = (element: Element) => {
+    const topValue = mouseY.value - containerY.value - currentElementOffset.y
+    const leftValue = mouseX.value - containerX.value - currentElementOffset.x
+    // 计算当前元素所在的格子
+    const rowIndex = Math.floor(topValue / (windowHeight.value / 10)) > 9 ? 9 : Math.floor(topValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(topValue / (windowHeight.value / 10))
+    const colIndex = Math.floor(leftValue / (windowWidth.value / 10)) > 9 ? 9 : Math.floor(leftValue / (windowHeight.value / 10)) < 0 ? 0 : Math.floor(leftValue / (windowHeight.value / 10))
+    const isSafeRes = isSafe(rowIndex, colIndex, currentElement.value)
+    element.colNumber = isSafeRes ? colIndex + 1 : currentElement.value.colNumber
+    element.rowNumber = isSafeRes ? rowIndex + 1 : currentElement.value.rowNumber
+    handleHashMap(element.rowNumber, element.colNumber, element, 'stay')
+    isDropDown.value = false
 }
 </script>
 
 <template>
-    <div class="h-30px w-full absolute top-0 left-0 z-10">
+    <div class="h-30px absolute top-0 left-0 z-10">
         <ElButton @click="openAddDialog">
             添加元素
         </ElButton>
     </div>
-    <div ref="container" class="vh-100 bg-amber-50 grid grid-cols-10 grid-rows-10 gap-4px !relative">
+    <div ref="container" class="vh-100 w-full bg-amber-50 grid grid-cols-10 grid-rows-10 gap-4px !relative" @mousemove="moveElement">
         <template v-for="item in allElements" :key="item.name">
             <div
                 :id="item.name"
-                draggable="true"
-                class="bg-sky-200 flex justify-center items-center text-6xl"
+                class="bg-sky-200 flex justify-center items-center text-6xl rounded-xl overflow-hidden"
                 :style="{
                     gridRowStart: item.rowNumber,
                     gridRowEnd: item.height + item.rowNumber,
                     gridColumnStart: item.colNumber,
                     gridColumnEnd: item.width + item.colNumber,
                 }"
-                @dragstart="startDrag($event, item)"
-                @dragend="endDrag($event, item)"
+                @mousedown.left="startDragElement(item)"
             >
                 {{ item.name }}
             </div>
         </template>
+        <div
+            v-show="isDropDown"
+            id="vElement"
+            class="bg-sky-200 flex justify-center items-center text-6xl rounded-xl overflow-hidden opacity-50"
+            :style="{
+                gridRowStart: vElement.rowNumber,
+                gridRowEnd: vElement.height + vElement.rowNumber,
+                gridColumnStart: vElement.colNumber,
+                gridColumnEnd: vElement.width + vElement.colNumber,
+            }"
+        >
+            {{ vElement.name }}
+        </div>
+        <div
+            v-show="isDropDown"
+            id="dragVElement"
+            class="bg-sky-200 flex justify-center items-center text-6xl rounded-xl border-2 border-dotted overflow-hidden opacity-50"
+            :style="{
+                gridRowStart: dragVElement.rowNumber,
+                gridRowEnd: dragVElement.height + dragVElement.rowNumber,
+                gridColumnStart: dragVElement.colNumber,
+                gridColumnEnd: dragVElement.width + dragVElement.colNumber,
+            }"
+            @mouseup.left="endDragElement(currentElement)"
+        >
+            {{ dragVElement.name }}
+        </div>
     </div>
+
     <ElDialog
         v-model="addDialog"
         width="400"
