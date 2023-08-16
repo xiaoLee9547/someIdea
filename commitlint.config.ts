@@ -5,6 +5,7 @@ const getPackages = (packagePath: 'apps' | 'packages') => fg.sync('*', { cwd: pa
 const scopes = [
     ...getPackages('apps'),
     ...getPackages('packages'),
+    'project',
 ]
 
 export default {

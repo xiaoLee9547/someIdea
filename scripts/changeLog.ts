@@ -16,6 +16,7 @@ enum scopesName {
 }
 
 git.log({ maxCount: 200 }).then((logs) => {
+    if (logs.latest.message === 'chore(chore): create CHANGELOG.md') return
     const filterLogs = logs.all.filter(commit => commit.message.startsWith('feat') || commit.message.startsWith('fix'))
     const changeMap: Map<string, {
         feat: ChangeLogItem[]
@@ -54,5 +55,7 @@ git.log({ maxCount: 200 }).then((logs) => {
         })
         console.log(markdown)
         fs.writeFileSync('./CHANGELOG.md', markdown)
+        git.add('./CHANGELOG.md')
+        git.commit('chore(chore): create CHANGELOG.md')
     })
 })
