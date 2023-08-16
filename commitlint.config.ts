@@ -1,6 +1,6 @@
 import fg from 'fast-glob'
 
-const getPackages = packagePath => fg.sync('*', { cwd: packagePath, onlyDirectories: true })
+const getPackages = (packagePath: 'apps' | 'packages') => fg.sync('*', { cwd: packagePath, onlyDirectories: true })
 
 const scopes = [
     ...getPackages('apps'),
