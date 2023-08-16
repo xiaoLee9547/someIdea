@@ -8,6 +8,8 @@ const scopes = [
     ...getPackages('apps'),
 ]
 
+console.log(scopes)
+
 const gitStatus = execSync('git status --porcelain || true')
     .toString()
     .trim()
