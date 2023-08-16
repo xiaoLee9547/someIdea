@@ -4,4 +4,4 @@ const git = Git()
 
 const logs = await git.log({ maxCount: 200 })
 
-console.log(logs)
+console.log(logs, '----')
