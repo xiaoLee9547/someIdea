@@ -46,6 +46,6 @@
     "simple-git-hooks": "^2.9.0"
   },
   "simple-git-hooks": {
-    "pre-commit": "node .script/commit.ts"
+    "pre-commit": "node script/commit.ts"
   }
 }
