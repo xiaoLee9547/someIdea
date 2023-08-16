@@ -1,29 +1,11 @@
-import { execSync } from 'node:child_process'
 import fg from 'fast-glob'
 
-const getPackages = packagePath =>
-    fg.sync('*', { cwd: packagePath, onlyDirectories: true })
+const getPackages = packagePath => fg.sync('*', { cwd: packagePath, onlyDirectories: true })
 
 const scopes = [
     ...getPackages('apps'),
+    ...getPackages('packages'),
 ]
-
-console.log(scopes)
-
-const gitStatus = execSync('git status --porcelain || true')
-    .toString()
-    .trim()
-    .split('\n')
-
-const scopeComplete = gitStatus
-    .find(r => ~r.indexOf('M  packages'))
-    ?.replace(/\//g, '%%')
-    ?.match(/packages%%((\w|-)*)/)?.[1]
-
-const subjectComplete = gitStatus
-    .find(r => ~r.indexOf('M  packages/components'))
-    ?.replace(/\//g, '%%')
-    ?.match(/packages%%components%%((\w|-)*)/)?.[1]
 
 export default {
     rules: {
@@ -38,7 +20,7 @@ export default {
          * ^^^^^^^^^^^^^^ empty line.
          * - Something here
          */
-        'body-leading-blank': [1, 'always'],
+        'body-leading-blank': [2, 'never'],
         /**
          * type[scope]: [function] description
          *
@@ -46,13 +28,14 @@ export default {
          *
          * ^^^^^^^^^^^^^^
          */
-        'footer-leading-blank': [1, 'always'],
+        'footer-leading-blank': [2, 'never'],
         /**
          * type[scope]: [function] description [No more than 72 characters]
          *      ^^^^^
          */
         'header-max-length': [2, 'always', 72],
         'scope-case': [2, 'always', 'lower-case'],
+        'scope-empty': [2, 'never'],
         'subject-case': [
             1,
             'never',
@@ -83,12 +66,5 @@ export default {
                 'test',
             ],
         ],
-    },
-    prompt: {
-        defaultScope: scopeComplete,
-        customScopesAlign: !scopeComplete ? 'top' : 'bottom',
-        defaultSubject: subjectComplete && `[${subjectComplete}] `,
-        allowCustomIssuePrefixs: false,
-        allowEmptyIssuePrefixs: false,
     },
 }
