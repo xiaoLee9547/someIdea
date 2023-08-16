@@ -1,7 +1,3 @@
-import Git from 'simple-git'
+require('@esbuild-kit/cjs-loader')
+module.exports = require('./changeLog').default
 
-const git = Git()
-
-const logs = await git.log({ maxCount: 200 })
-
-console.log(logs, '----')
